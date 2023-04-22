@@ -1,0 +1,40 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+hnote over client: User starts authorization process
+
+client -> as ++: **Authorization Request**\nFront channel GET https://as/auth (authorization_endpoint)\nclient_id, redirect_uri=https://client/callback, <color:blue>state</color>, <color:green>code_challenge</color>
+
+hnote over as: User authentication and consent
+
+as --> client --: **Authorization Response**\nFront channel GET https://client/callback (redirect_uri)\n<color:red>code</color>, <color:blue>state</color>
+
+client -> as ++ : **Access Token Request**\nHTTPS POST https://as/token (token_endpoint), urlencoded (with client authentication)\n<color:red>code</color>, grant_type=authorization_code, redirect_uri=https://client/callback, <color:green>code_verifier</color>
+
+as --> client --: **Access Token Response**\nHTTPS 200, JSON\n<color:red>access_token</color>, <color:red>refresh_token</color>
+
+|||
+
+client -> rs ++ : **Authenticated Request**\nHTTPS GET/POST/… https://rs/api/protected_resource with <color:red>access_token</color>
+rs --> client --
+
+... later (access_token expiration) ...
+
+client -> rs ++ : **Authenticated Request**\nHTTPS GET/POST/… https://rs/api/protected_resource with <color:red>access_token</color>
+rs --> client --: HTTPS 403, Bearer error="invalid_token"
+
+client -> as ++ : **Refresh Token Request**\nHTTPS POST https://as/token (token_endpoint), urlencoded (with client authentication)\n<color:red>refresh_token</color>
+
+as --> client --: **Refresh Token Response**\nHTTPS 200, JSON\n<color:red>access_token</color>, <color:red>refresh_token</color>
+
+client -> rs ++ : **Authenticated Request**\nHTTPS GET/POST/… https://rs/api/protected_resource with <color:red>access_token</color>
+rs --> client --
+
+@enduml
+

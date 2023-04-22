@@ -1,0 +1,55 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+alt using Authorization Request Header Field
+    client -> rs: **Authenticated Request**\nHTTPS GET/POST/… https://rs/api/protected_resource\nAuthorization: Bearer AT-XXXX
+else using Form-Encoded Body Parameter
+    client -> rs: **Authenticated Request**\nHTTPS POST https://rs/api/protected_resource, urlencoded\naccess_token=AT-XXXX&…
+else using URI Query Parameter
+    client -> rs: **Authenticated Request**\nHTTPS GET/POST/… https://rs/api/protected_resource?access_token=AT-XXXX&…
+end
+
+opt
+    hnote over rs: Offline validation of access token (eg. if this is a JWT)
+end
+opt
+    ref over as, rs: Online validation of access token (eg. using Token Introspection)
+end
+
+hnote over rs: Authorization verifications (scope, resource, authorization_details, etc.)
+
+alt token accepted
+
+rs --> client: HTTPS 2xx, etc.
+
+else Token must be refreshed
+
+rs --> client: HTTPS 401 Unauthorized\nWWW-Authenticate: Bearer error="invalid_token", error_description="…"
+ref over client, as: Refresh the token
+
+else Insufficient scope for request
+
+rs --> client: HTTPS 403 Forbidden\nWWW-Authenticate: Bearer error="insufficient_scope", scope="scope4"
+opt
+    ref over client, as: (New) Authorization request (with scope=scope4)
+end
+
+else Step-up Authentication (draft-ietf-oauth-step-up-authn-challenge)
+
+rs --> client: HTTPS 401 Unauthorized\nWWW-Authenticate: Bearer error="insufficient_user_authentication",\n    error_description="…",\n    acr_values="…", (if a new ACR is required)\n    max_age="5" (if a fresher authorization is required)
+ref over client, as: (New) Authorization request
+
+else Invalid request
+
+rs --> client: HTTPS 400 Bad Request\nWWW-Authenticate: Bearer error="invalid_request"
+
+end
+
+@enduml
+

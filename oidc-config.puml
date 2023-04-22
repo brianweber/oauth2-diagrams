@@ -1,0 +1,40 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+actor "User\n(OAuth Resource Owner)\njanedoe@example.com" as user
+participant "User Agent / Frontend\nfor Relying Party" as ua
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as client
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as as
+participant "User domain\nhttps://example.com" as domain
+
+== Discovery ==
+
+user -> ua
+& ua -> client: Try to login using\naccount "janedoe@example.com"
+note right: Which OP should be used for this user?
+& note over domain, as: https://example.com uses\nhttps://as for OpenID provider
+client -> domain: **OpenID Provider Issuer Discovery Request** (WebFinger Query) \nHTTPS GET https://op/.well-known/webfinger?\n  resource=acct:janedoe%40example.com\n  &host=example.com\n  &rel=http%3A%2F%2Fopenid.net%2Fspecs%2Fconnect%2F1.0%2Fissuer
+domain --> client: **OpenID Provider Issuer Discovery Response** (WebFinger Response)\nHTTPS 200 OK, JRD (application/jrd+json)\n{"subject": "acct:janedoe@example.com",\n "links":[{"rel":"http://openid.net/specs/connect/1.0/issuer",\n           "href="https://op"}]}
+
+ref over client, as: OpenID Connect, Metadata Request, Dynamic Client Registration, Authentication
+
+== Metadata Request ==
+
+hnote over client: Start discovery for issuer "https://op"
+
+client -> as: **Authorization Server Metadata Request**\nHTTPS GET https://op/.well-known/oauth-authorization-server\n  or https://op/.well-known/openid-configuration (compatibility)
+
+as --> client: **Authorization Server Metadata Response**\nHTTPS 200 OK, JSON\n…\n"scopes_supported": ["openid", "profile", "email", "address", "phone", "offline_access"],\n"userinfo_endpoint": "https://op/userinfo",\n"response_types_supported": ["code", "code id_token", "id_token", "token id_token"],\n"acr_values_supported": […]\n"subject_types_supported": ["public", "pairwise"],\n"display_values_supported": ["page", "popup"],\n"claim_types_supported": ["normal", "distributed"],\n"claims_supported": ["sub", "iss", "auth_time", "acr", "name", "given_name", "family_name", …]\n"claims_parameter_supported": true,\n"response_modes_supported": ["query", "fragment"]\n…
+
+hnote over client: Check issuer match with expected one
+
+== Dynamic Client registration ==
+
+client -> as: **Client Registration Request**\nHTTPS POST https://as/register (registration_endpoint), JSON\n(optionally, authentication using some initial access token)\n"redirect_uris": ["https://client/callback"],\n"response_types": ["code"]\n"application_type": "web" (or "native"),\n"client_name": "Foo",\n"client_uri": "https://client",\n"logo_uri": "https://client/logo.png"\n"subject_type":"pairwise" (or "public")\n"initiate_login_uri": "https://client/login"\n…
+
+as --> client: **Client Registration Response**\nHTTPS 200, JSON\n"client_id": "CID-XXXX",\n"client_secret": "SECRET-XXXX" (opaque, depending on client auth. method)\n"client_secret_expires_at": 0,\n"registration_client_uri": "htpps://as/registration/RRRRR" (if dynamic management supported),\n"registration_access_token", "RAT-XXXX" (opaque, if dynamic management supported)\n…
+
+@enduml
+

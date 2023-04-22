@@ -1,0 +1,47 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+note over as: Relevant AS Metadata:\n"tls_client_certificate_bound_access_tokens": true / false,\n"mtls_endpoint_aliases": {\n    "token_endpoint": "https://mtls.as/token", …\n},\n"token_endpoint_auth_methods_supported": [\n  "tls_client_auth", "self_signed_tls_client_​auth"]
+
+&note over client: Relevant Client Metadata:\n* "tls_client_certificate_bound_access_tokens": true / false,\n\nFor PKI-based authentication (tls_client_auth):\n* "token_endpoint_auth_method": "tls_client_auth"\n* "tls_client_auth_subject_dn": "DC=client,DC=example,DC=net",\n* or "tls_client_auth_san_dns": "client",\n* or "tls_client_auth_san_uri": "https://client",\n* or "tls_client_auth_san_ip": "…",\n* or "tls_client_auth_san_email": "app@example.com",\n\nFor Self-signed certificate (self_signed_tls_client_​auth):\n* "token_endpoint_auth_method": "self_signed_tls_client_​auth",\n* "jwks_uri": "https://client/keys.jwks" or "jwks": {…}
+
+== Token Request ==
+
+client -> as ++ : **Access Token Request**\nHTTPS (mTLS) POST https://as/token (token_endpoint), urlencoded\nclient_id=CID-XXXX (must be included event when mTLS is used)\n&…
+
+alt PKI-based authentication (tls_client_auth)
+    hnote over as: Check client certificate using PKI
+else Self-signed certificate (self_signed_tls_client_​auth)
+    hnote over as: Check client certificate using provided JWKS
+end
+
+client <--as -- : **Access Token Response**\nHTTPS 200, JSON\naccess_token=AT-XXXX
+
+note right: eg. access_token is bound to the client certificate.\nWhen it is a JWT, the "cnf" claim can be used:\n    "cnf": {"x5t#S256": "…"} (SHA-256 of the certificate in DER form)\n\nrefresh_token (if any) SHOULD be bound to the client certificate as well\nwhen the client is a public client.
+
+== Protected Resource Access ==
+
+client -> rs: **Authenticated Request**\nHTTPS (mTLS) GET/POST/… https://rs/api/protected_resource\nAuthorization: Bearer AT-XXXX
+
+hnote over rs: Validate access_token
+
+opt tls_client_certificate_bound_access_tokens
+hnote over rs: Validate client certificate eg.:\n* using "x5t#S256" claim of access_token (if this is a JWT)\n* using "x5t#S256" property of token introspection
+end
+
+rs -> client
+
+== Token Introspection ==
+
+rs -> as : **Introspection Request**\nHTTPS POST https://as/introspect (introspection_endpoint), urlencoded
+
+as --> rs: **Introspection Response**\nHTTPS 200, JSON\n…\n"cnf": {"x5t#S256": "…"} if tls_client_certificate_bound_access_tokens
+
+@enduml
+

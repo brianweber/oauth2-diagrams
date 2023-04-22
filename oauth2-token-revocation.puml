@@ -1,0 +1,19 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+note over as: Relevant AS Metadata:\n"revocation_endpoint": "https://as/revoke",\n"revocation_endpoint_auth_methods_supported": …,\n"revocation_endpoint_auth_signing_alg_values_supported": …,
+
+client -> as ++ : **Revocation Request**\nHTTPS POST https://as/revoke (revocation_endpoint), urlencoded\n(client authentication, cf. revocation_endpoint_auth_methods_supported)\ntoken=RT-XXXX\n&token_type_hint=refresh_token (or access_token)
+
+hnote over as: Revoke token
+
+as --> client -- : **Revocation Response**\nHTTPS 200 (content ignored)
+
+@enduml
+

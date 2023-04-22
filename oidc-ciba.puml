@@ -1,0 +1,114 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as rp
+participant "Consumption Device" as cd
+actor "User\n(OAuth Resource Owner)" as ro
+participant "Authentication Device\n(eg. user smartphone)" as ad
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as op
+
+note over op:Relevant OP Metadata\n"backchannel_token_delivery_modes_supported": ["poll", "ping", "push"],\n"backchannel_authentication_endpoint": "https://op/bc-auth",\n"backchannel_authentication_request_signing_alg_values_supported": …\n"backchannel_user_code_parameter_supported": true | false,
+
+& note over rp: Relevant RP Registration\n"backchannel_token_delivery_mode": "poll" / …,\n"backchannel_client_notification_endpoint": "https://rp/bc-notif",\n"backchannel_authentication_request_signing_alg": …\n"backchannel_user_code_parameter": true | false,\n"token_endpoint_auth_methods_supported": …
+
+opt
+    ro -> cd: Login hint (login_hint)
+    & cd -> rp
+end
+
+opt backchannel_user_code_parameter=true
+    ro -> cd: User code (user_code) "WXYZ"
+    & cd -> rp
+end
+
+alt Unsigned authentication request
+
+rp -> op: **CIBA Request**\nHTTPS POST https://as/bc-auth (backchannel_authentication_endpoint), urlencoded\n(client auth. to token_endpoint_auth_methods_supported)\nscope=openid …\n&client_notification_token=CNT-XXXX (if backchannel_token_delivery_mode = ping or push)\n&acr_values=… (OPTIONAL)\n&login_hint=… (OPTIONAL) (or id_token_hint or login_hint_token)\n&binding_message=XOXO-123456-ABCDE (OPTIONAL)\n&user_code=WXYZ (OPTIONAL, if backchannel_user_code_parameter=true)\n&requested_expiry=120 (OPTIONAL)
+
+else Signed authentication request (if backchannel_authentication_request_signing_alg_values_supported non-empty)
+
+rp -> op: **CIBA Request**\nHTTPS POST https://as/bc-auth (backchannel_authentication_endpoint), urlencoded\n(client auth. according to token_endpoint_auth_methods_supported)\nrequest=eyJ… (JWT authenticated using method in backchannel_authentication_request_signing_alg_values_supported, NOT encrypted)
+
+end
+
+hnote over op: Check user code
+
+par
+
+op --> rp: **Authentication Request Acknowledgement**\nHTTPS 200, JSON\n"auth_req_id": "ARID-XXXX",\n"expires_in": 120,\n"interval": 2 (if backchannel_token_delivery_mode=poll)
+
+rp -> cd
+& cd -> ro: 
+
+op -> ad
+& ad -> ro: "Application XXX has requested to authenticate you."
+
+op <-> ad
+& ad <-> ro: User authentication.
+
+op <-> ad
+& ad <-> ro: "Do you want to authorize … Verification code XOXO-123456-ABCDE"
+
+hnote over ro: Compare binding_message
+
+ro -> ad: Consent
+& ad -> op
+
+else
+
+opt backchannel_token_delivery_mode=poll
+
+loop Auhthorization not completed
+
+rp -> op: **CIBA Polling Request**\nHTTP POST http://op/token (token_endpoint), urlencoded\n(client authentication)\ngrant_type=urn%3Aopenid%3Aparams%3Agrant-type%3Aciba\n&auth_req_id=1c266114-a1be-4252-8ad1-04986c5b9ac1
+
+note over op: The OpenID Provider may implement long polling\n(up to 30s per request).
+
+alt Authorization pending
+
+op --> rp: **CIBA Polling Response**\nHTTPS 3xx, JSON\n"error": "authorization_pending"
+
+else Authorization completed
+
+op --> rp: **CIBA Polling Response**\nHTTPS 200, JSON\n"access_token": "AT-XXXX",\n"token_type": "Bearer",\n"refresh_token": "RT-XXX", (OPTIONAL)\n"expires_in": 120,\n"id_token": "eyJ…"
+
+end
+
+end
+
+end
+
+end
+
+alt backchannel_token_delivery_mode=poll
+
+else backchannel_token_delivery_mode=ping
+
+op -> rp: **CIBA Ping Notification**\nHTTPS POST http://rp/bc-notif (backchannel_client_notification_endpoint), JSON\nAuthorization: Bearer CNT-XXXX\n{"auth_req_id": "ARID-XXXX"}
+
+rp --> op: HTTPS 204
+
+rp -> op: **CIBA Token Request**\nHTTP POST http://op/token (token_endpoint), urlencoded\n(client authentication)\ngrant_type=urn%3Aopenid%3Aparams%3Agrant-type%3Aciba\n&auth_req_id=1c266114-a1be-4252-8ad1-04986c5b9ac1
+
+op --> rp: **CIBA Token Response**\nHTTPS 200, JSON\n"access_token": "AT-XXXX",\n"token_type": "Bearer",\n"refresh_token": "RT-XXX", (OPTIONAL)\n"expires_in": 120,\n"id_token": "eyJ…"
+
+else backchannel_token_delivery_mode=push
+
+op -> rp: **CIBA Push Notification**\nHTTPS POST http://rp/bc-notif (backchannel_client_notification_endpoint), JSON\nAuthorization: Bearer CNT-XXXX\n{"auth_req_id": "ARID-XXXX",\n"access_token": "AT-XXXX",\n"token_type": "Bearer",\n"refresh_token": "RT-XXX", (OPTIONAL)\n"expires_in": 120,\n"id_token": "eyJ…" including the following claims which are only required on push\n   "at_hash": … (REQUIRED for backchannel_token_delivery_mode=push, half of the hash of the access_token)\n   "urn:openid:params:jwt:claim:rt_hash": …\n      (REQUIRED for backchannel_token_delivery_mode=push and if a refresh_token is issued,\n      half of the hash of the refresh_token)\n   "urn:openid:params:jwt:claim:auth_req_id": "ARID-XXX"
+
+rp --> op: HTTPS 2004
+
+end
+
+ref over rp: Process id_token
+
+opt backchannel_token_delivery_mode=push
+
+hnote over rp: Check token binding,\n* at_hash\n* urn:openid:params:jwt:claim:auth_req_id\n* urn:openid:params:jwt:claim:rt_hash (if used)
+
+end
+
+@enduml
+

@@ -1,0 +1,91 @@
+@startuml dg
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!if %variable_exists("$THEME")
+title OAuth Authorization Code Flow [$THEME theme]
+!else
+title OAuth Authorization Code Flow
+!endif
+
+!pragma teoz true
+autonumber
+
+participant "Client\nhttps://client" as client
+box
+    participant "User Agent / Frontend\nfor Client" as uac
+    actor "Resource Owner\n(User)" as user
+    participant "User Agent / Frontend for\nAuthorization Server" as uaas
+end box
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+note over client: Authorization Server configuration\n(endpoints, etc.)\nand client credentials\n(client_id, client_secret, etc.)\nalready provisionned
+
+& note over as: Client configuration\nalready provisionned\n(redirect_uris, etc.)
+
+user -> uac: Request to authorize resource access
+& uac -> client
+
+|||
+
+opt PKCE used
+
+hnote over client: Generate random code_verifier\nand derive code_challenge=\n  code_challenge_method(code_verifier)
+
+end
+
+client -> uac : (HTTPS 302)
+& uac -> uaas: **Authorization Request**\nRedirection to GET https://as/auth (authorization_endpoint)\n  ?response_type=code (REQUIRED)\n  &client_id=CID-XXXX (REQUIRED, opaque)\n  &redirect_uri=https%3A%2F%2Fclient%2Ecallback\n    (REQUIRED unless exactly one URI registered for this client,\n    REQUIRED in OpenID Connect)\n  &state=AS-XXXX (RECOMMENDED, opaque)\n  \n  &scope=scope1+scope2 (OPTIONAL)\n  &resource=http://rs/api (extension, API base URI)\n  &authorization_details=[{"type": "…", …}, …] (extension, see draft-ietf-oauth-rar)\n  \n  &code_challenge_method=S256 (if PKCE used)\n  &code_challenge=CCCCCC (if PKCE used)
+
+note left: For native apps, the redirect_uri may be\na claimed https:// URI,\na com.example.foo: (private) URI,\nor a http://localhost:XXX URI
+note right: POST (urlencoded) may be supported as well.
+
+& uaas -> as
+
+
+
+hnote over as: Check redirect_uri allowed for client_id
+
+
+opt User does not already have a session
+  user <-> uaas : User authentication
+  & uaas <-> as
+  & note left of user: Authorization Server\nmay use any authentication methods\n(mTLS, WebAuthn, etc.)\nfor authenticating user
+end
+
+user <-> uaas : Consent
+rnote left: "Do you want to authorize\nClientFoo to …?"
+& uaas <-> as
+
+as --> uaas: (HTTPS 302)
+& uaas --> uac: **Authorization Response**\nRedirection to GET https://client/callback (redirect_uri)\n  ?code=AC-XXXX (opaque, single-use)\n  &state=AS-XXXX (if given)\n  &iss=https://as (extension)
+& uac --> client
+
+hnote over client: Check validity of state\nand its association with the user session\n(protection against CSRF)
+hnote over client: Check "iss" field if given\n(protection against mixup attacks)
+
+|||
+
+client -> as ++ : **Access Token Request**\nHTTPS POST https://as/token (token_endpoint), urlencoded\nAuthorization: Basic … (client_id + client_secret) (or other authentication method, see token_endpoint_auth_method)\ngrant_type=authorization_code\n  &code=AC-XXXX\n  &redirect_uri=https%3A%2F%2Fclient%2Fcallback (same as in request)\n  &code_verifier=CV-XXXXV (if and only if code_challenge was used i.e. PKCE)
+
+note right: If support for browser-based / single-page applications\nis needed the token endpoint need a suitable CORS policy.
+
+hnote over as: Check (client authentication,\nredirect_uri, code, etc)
+hnote over as: Check code issued to client_id
+opt code_challenge was sent in authentication request
+  hnote over as: Check code_verifier=\ncode_challenge_method(code_challenge)
+else
+  break code_verifier was supplied
+    note over as: Protection against PKCE downgrade attacks
+  end
+end
+hnote over as: Revoke code (single use)
+
+client <--as -- : **Access Token Response**\nHTTPS 200, JSON\n"access_token":"AT-XXXX", (opaque)\n"token_type":"bearer",\n"expires_in":3600,\n"refresh_token":"RT-XXXX", (OPTIONAL, opaque)\n"scope":"scope1 scope2",\n"authorization_details": [{"type": "…", …}, …] (extension, see draft-ietf-oauth-rar)\n
+note right: The access_token is opaque for the client\nand its content is not mandated.\nIt may be a JWT with the application/at+jwt type.
+
+client -> uac: Restore application state
+& uac -> user
+
+@enduml
+

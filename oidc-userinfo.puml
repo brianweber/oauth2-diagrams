@@ -1,0 +1,31 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as client
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as as
+
+
+client -> as:  **UserInfo Request** (OAuth Authenticated Request)\nHTTPS GET (or POST) https://op/userinfo\nAuthorization: Bearer AT-XXXX (or another Beare Token suage)
+
+note over as: The UserInfo endpoint SHOULD support\nrequests by a RP web frontend (using CORS).
+
+hnote over as: Check access_token
+
+alt userinfo_signed_response_alg not defined
+
+as --> client: **UserInfo Response**\nHTTPS 200, JSON\n"sub": "SUB-XXXX",\n"aud": "CID-XXXX",\n"name": "Jane Doe",\n"given_name": "Jane",\n"family_name": "Doe",\n"preferred_username": "j.doe",\n"email": "janedoe@example.com",\n…
+
+else userinfo_signed_response_alg defined
+
+as --> client: **UserInfo Response**\nHTTPS 200, JWT (JWS or JWS-then-JWE)\n…
+
+hnote over client: Decrypt JWE, validate JWS
+
+end
+
+hnote over client: ⚠️ Check "sub" claim consistent with id_token\n(protection against token substitution attacks)
+
+@enduml
+

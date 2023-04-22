@@ -1,0 +1,39 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as client
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as as
+
+hnote over client: User starts login process
+
+client -> as ++: **Authentication Request**\nFront channel GET https://as/auth (authorization_endpoint)\nclient_id, redirect_uri=https://client/callback, <color:blue>state</color>, <color:blue>nonce</color>, <color:green>code_challenge</color>
+
+hnote over as: User authentication and consent
+
+as --> client --: **Authentication Response**\nFront channel GET or POST https://client/callback (redirect_uri)\n<color:red>code</color>, <color:blue>state</color>
+
+client -> as ++ : **Access Token Request**\nHTTPS POST https://as/token (token_endpoint), urlencoded (with client authentication)\n<color:red>code</color>, grant_type=authorization_code, redirect_uri=https://client/callback, <color:green>code_verifier</color>
+
+as --> client --: **Access Token Response**\nHTTPS 200, JSON\n<color:red>access_token</color> (JWT, including <color:blue>nonce</color> claim), <color:red>access_token</color>, <color:red>refresh_token</color>
+
+|||
+
+client -> as ++ : **UserInfo Request**\nHTTPS GET/POST/… https://op/userinfo with <color:red>access_token</color>
+as --> client --: **UserInfo Response**, HTTPS 200, JSON (user info)
+
+... later, access_token expires ...
+
+client -> as ++ : **UserInfo Request**\nHTTPS GET/POST/… https://op/userinfo with <color:red>access_token</color>
+as --> client --: **UserInfo Response**, HTTPS 401, Bearer error invalid_token
+
+client -> as ++ : **Refresh Token Request**\nHTTPS POST https://as/token (token_endpoint), urlencoded (with client authentication)\n<color:red>refresh_token</color>
+
+as --> client --: **Refresh Token Response**\nHTTPS 200, JSON\n<color:red>access_token</color>, <color:red>refresh_token</color>
+
+client -> as ++ : **UserInfo Request**\nHTTPS GET/POST/… https://op/userinfo with <color:red>access_token</color>
+as --> client --: **UserInfo Response**, HTTPS 200, JSON (user info)
+
+@enduml
+

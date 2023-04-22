@@ -1,0 +1,66 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+box
+    participant "User Agent / Frontend\nfor Client" as uac
+    actor "Resource Owner\n(User)" as user
+    participant "User Agent / Frontend for\nAuthorization Server" as uaas
+end box
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+note over as, uaas:Relevant AS Metadata:\n"jwks_uri": "http://as/jwks.json",\n"require_signed_request_object": false,
+
+& note over client, uac:Relevant Client Metadata:\n"jwks_uri": "http://as/jwks.json" (or "jwks": {…}),\n"require_signed_request_object": false,
+
+user -> uac: Request to authorize resource access
+& uac -> client
+
+|||
+
+opt PKCE used
+  hnote over client: Generate code_verifier\nand code_challenge
+end
+
+opt Encryption (JWE)
+    client -> as: HTTPS GET http://as/jwks.json (cached)
+    as --> client: HTTPS 200, JWKS (server public keys)
+end
+
+alt 
+
+client -> uac : (HTTPS 302)
+& uac -> uaas : **Authorization Request**\nRedirection to GET https://as/auth (authorization_endpoint)\n  ?client_id=CID-XXXX (opaque, REQUIRED)\n  &request=eyJ… (authorization request in JWT)
+& uaas -> as
+
+else
+
+client -> uac : (HTTPS 302)
+& uac -> uaas: **Authorization Request**\nRedirection to GET https://as/auth (authorization_endpoint)\n  ?client_id=CID-XXXX (opaque, REQUIRED)\n  &request_uri=https://client/ZZZZZZ.jwt (request payload in JWT)
+& uaas -> as
+
+as -> client: HTTPS GET https://client/ZZZZZZ.jwt
+client --> as: HTTP 200, JWT (Authorization Request)
+
+end
+
+note over client, user:Request may be signed (JWS) or signed-then-encrypted (JWS+JWE)\nJWT header "kid" may reference the keys to use"\nJWT header "type": "oauth-authz-req+jwt"\nJWT claims: authorization request + "iss" (client_id) + "aud" (issuer)
+
+opt Signature Verification (JWS)
+    as -> client : HTTPS GET http://client/jwks.json (cached)
+    client --> as: HTTPS 200, JWKS (client public keys)
+end
+
+hnote over as: Decrypt JWT\n(using serveur private key)\nand/or check signature\n(using client public key)
+
+as -> uaas: (HTTPS 302)
+& uaas -> uac: **Authorization Request**\nRedirection to https://client/callback?…
+& uac -> client
+
+... end of the flow ...
+
+@enduml
+

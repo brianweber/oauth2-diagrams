@@ -1,0 +1,140 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as client
+box
+    participant "User Agent / Frontend\nfor Relying Party" as uac
+    actor "User\n(OAuth Resource Owner)" as user
+    participant "User Agent / Frontend for\nOpenID Provider" as uaas
+end box
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as as
+
+
+user -> uac: Request to login
+& uac -> client
+
+|||
+
+
+opt PKCE used
+
+hnote over client: Generate random code_verifier\nand derive code_challenge=\n  code_challenge_method(code_verifier)
+
+end
+
+client -> uac : (HTTPS 302)
+& uac -> uaas: **Authentication Request** (OAuth Authorization Request)\nRedirection to GET (query) or POST (urlencoded) https://rp/auth (authorization_endpoint)\n  ?response_type=code (REQUIRED)\n  &client_id=CID-XXXX (REQUIRED, opaque)\n  &redirect_uri=https%3A%2F%2Fclient%2Ecallback (always REQUIRED in OpenID Connect)\n  &scope=openid+profile+email+phone (OPTIONAL)\n  &state=AS-XXXX (RECOMMENDED, opaque)\n  &nonce=AN-XXXX\n    (OPTIONAL using this flow but REQUIRED for other flows,\n    included in ID token, protect against replay attacks)\n  \n  &code_challenge_method=S256 (if PKCE used)\n  &code_challenge=CCCCCC (if PKCE used)\n  \n  &response_mode=query (or fragment, form_post, etc.)\n  &claims={"userinfo":{…}, "id_token": {…}} (OPTIONAL, list of required claims)\n  &display=page / popup / touch / wap (OPTIONAL)\n  &prompt=login (OPTIONAL, and/or none/consent/select_account)\n  &max_age=320 (OPTIONAL, max. authentication age)\n  &id_token_hint=eyJ… (OPTIONAL, previous ID token)\n  &login_hint=janedoe@example.com (OPTIONAL)\n  &acr_values=… (OPTIONAL, requested authentication context class)
+
+note right: The request may as well be passed\nas a JWT (request=…)\nor as a reference to a JWT (request_uri=…)
+
+& uaas -> as
+
+hnote over as: Check redirect_uri allowed for client_id
+& note over uac: For native apps, the redirect_uri may be\na claimed URI (https://…),\na private URI (com.example.foo:…),\nor a localhost URI (http://localhost:XXX/…)
+
+opt User does not already have a session (or 'prompt' includes 'login')
+  user <-> uaas : User authentication
+  & uaas <-> as
+  & note left of user: Authorization Server\nmay use any authentication methods\n(password, WebAuthn, mobile application, etc.)\nfor authenticating the user
+end
+
+opt User consent may be skipped if already given unless 'prompt' includes 'consent')
+  user <-> uaas : Consent
+  rnote left: "Do you want to login on ClientFoo? Information requested: …"
+  & uaas <-> as
+end
+
+alt response_mode=query
+
+as --> uaas: (HTTPS 302)
+& uaas --> uac: **Authentication Response** (OAuth Authorization Response)\nRedirection to GET https://rp/callback (redirect_uri)\n  ?code=AC-XXXX (opaque, single-use)\n  &state=AS-XXXX (if given)\n  &iss=https://op (extension)
+& uac --> client
+
+else response_mode=fragment
+
+as --> uaas: (HTTPS 302)
+& uaas --> uac: **Authentication Response** (OAuth Authorization Response)\nRedirection to GET https://rp/callback (redirect_uri)\n  #code=AC-XXXX (opaque, single-use)\n  &state=AS-XXXX (if given)\n  &iss=https://op (extension)
+& uac --> client
+
+else response_mode=form_post
+
+as --> uaas: (HTTPS with HTML form)
+& uaas --> uac: **Authentication Response** (OAuth Authorization Response)\nHTTP POST https://rp/callback, urlencoded\ncode=AC-XXXX (opaque, single-use)\n&state=AS-XXXX (if given)\n&iss=https://op (extension)
+& uac --> client
+
+else response_mode=query.jwt (JARM extension)
+
+as --> uaas: (HTTPS 302)
+& uaas --> uac: **Authentication Response** (OAuth Authorization Response)\nRedirection to GET https://rp/callback (redirect_uri)\n  ?response=eyJ… (JWT)
+& uac --> client
+
+else response_mode=fragment.jwt (JARM extension)
+
+as --> uaas: (HTTPS 302)
+& uaas --> uac: **Authentication Response** (OAuth Authorization Response)\nRedirection to GET https://rp/callback (redirect_uri)\n  #response=eyJ… (JWT)
+& uac --> client
+
+else response_mode=form_post.jwt (JARM extension)
+
+as --> uaas: (HTTPS with HTML form)
+& uaas --> uac: **Authentication Response** (OAuth Authorization Response)\nRedirection to POST https://rp/callback (redirect_uri), urlencoded\nresponse=eyJ… (JWT)
+& uac --> client
+
+end
+
+opt A JARM (JWT) request was used
+hnote over client: Check validity of JARM\n(signature/MAC, aud, exp, iss, etc.)
+end
+
+hnote over client: Check validity of state\nand its association with the user session\n(protection against CSRF)
+hnote over client: Check "iss" field (if given),\nprotection against mixup attacks
+
+|||
+
+client -> as: **Token Request** (OAuth Access Token Request)\nHTTPS POST https://op/token (token_endpoint), urlencoded\nAuthorization: Basic … (client_id + client_secret) (or other authentication method, see token_endpoint_auth_method)\ngrant_type=authorization_code\n  &code=AC-XXXX\n  &redirect_uri=https%3A%2F%2Fclient%2Fcallback (REQUIRED, same as in request)\n  &code_verifier=CV-XXXXV (if and only if code_challenge was used i.e. PKCE)
+
+note right: If support for browser-based / single-page applications\nis needed the token endpoint need a suitable CORS policy.
+
+hnote over as: Check (client authentication,\nredirect_uri, code, etc)
+hnote over as: Check code issued to client_id
+opt code_challenge was sent in authentication request
+  hnote over as: Check code_verifier=\ncode_challenge_method(code_challenge)
+else
+  break code_verifier was supplied
+    note over as: Protection against PKCE downgrade attacks
+  end
+end
+hnote over as: Revoke code (single use)
+
+client <--as: **Token Response** (OAuth Access Token Response)\nHTTPS 200, JSON\n"access_token":"AT-XXXX", (opaque)\n"token_type":"bearer",\n"expires_in":3600\n"refresh_token":"RT-XXXX", (OPTIONAL, opaque)\n"scope":"scope1 scope2",\n"id_token": "eyJ…" JWT with claims,\n    "iss": "https://op",\n    "sub": "SUB-XXXX", (private for the client_id if subject_type=pairwise)\n    "aud": "CID-XXXX",\n    "exp": …, "iat": …, "auth_time": …,\n    "nonce": "AN-XXXX", (from request, protection against replay attacks)\n    "acr": "…", (OPTIONAL, authentication context class),\n    "amr": […], (OPTIONAL, list of user authentication methods used),\n    "azp": "CID-XXXX",n    "sid": "SID-XXX", (OPTIONAL, different for different RPs, for Front/Back-Channel Logout)
+
+opt id_token encryption used (JWE), see id_token_encrypted_response_alg / id_token_encrypted_response_enc
+    hnote over client: Decrypt id_token
+end
+
+opt Signature/MAC verification may be skipped when using this flow (when directly received from the OP)
+  hnote over client: Check JWT "alg" parameter is expected one (id_token_signed_response_alg)
+  alt JWT is signed (alg=RS256, etc.)
+    opt
+      client -> as: (cached) HTTPS GET https://op/jwks.json (jwks_uri)
+      as --> client: HTTPS 200, JWKS (public keys)
+    end
+    hnote over client: Validate JWS signature (based on OP public pair)
+  else JWT is MACed (alg=HS256, etc.)
+    hnote over client: Validate JWS MAC (using client_secret)
+  else Unsecured JWT ("alg":"none")
+    note over client: ⚠️ Don't accept "alg":"none" when not directly received from the OP!
+  end
+end
+
+hnote over client: Validate id_token claims\neg. acr matches with requested one,\nauth_time consistent with max_age, etc.
+
+hnote over client: Create user session, etc.
+
+client -> uac: Restore application state (eg. target_link_uri)
+& uac -> user
+
+@enduml
+

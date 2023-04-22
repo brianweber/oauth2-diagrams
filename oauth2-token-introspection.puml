@@ -1,0 +1,33 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+note over as: Relevant AS Metadata:\n"introspection_endpoint": "https://as/introspect",\n"introspection_endpoint_auth_methods_supported": …,\n"introspection_endpoint_auth_signing_alg_values_supported": …,
+
+client -> rs: **Authenticated Request** (with access token)
+
+activate rs
+
+rs -> as : **Introspection Request**\nHTTPS POST https://as/introspect (introspection_endpoint), urlencoded\n(client authentication, cf. introspection_endpoint_auth_methods_supported)\ntoken=AT-XXXX\n&token_type_hint=access_token
+
+deactivate rs
+activate as
+
+as --> rs: **Introspection Response**\nHTTPS 200, JSON\n"active": true, (REQUIRED)\n"scope": "scope1 scope2", (OPTIONAL)\n"client_id": "CID-XXX", (OPTIONAL, client that requested the token)\n"username": "john.doe", (OPTIONAL)\n"token_type": "bearer", (OPTIONAL)\n"exp": …, "iat": …, "nbf": …, (OPTIONAL)\n"sub": "…", "aud": "…", "iss": "…", "jti": …, (OPTIONAL)\n"auth_time": …, (OPTIONAL, see draft-ietf-oauth-step-up-authn-challenge)\n"authorization_details": [{"type": "…", …}, …], (OPTIONAL, see draft-ietf-oauth-rar)\n"txn": "TXN-XXXX" (OPTIONAL, transaction ID, see draft-ietf-oauth-rar)
+
+deactivate as
+activate rs
+
+note over as, rs: Introspection response as a JWT may be negociated\n(application/token-introspection+jwt):\nactual response in the "token_introspection" claim\n(see draft-ietf-oauth-jwt-introspection-response).
+
+rs --> client
+
+deactivate rs
+
+@enduml
+

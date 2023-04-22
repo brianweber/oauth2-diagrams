@@ -1,0 +1,42 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as client
+box
+    participant "User Agent / Frontend\nfor Relying Party" as uac
+    actor "User\n(OAuth Resource Owner)" as user
+    participant "User-agent\nfor Third Party" as ua  
+end box
+participant "Third Party" as tp
+
+note over tp: May be the OpenID provider
+
+alt Using GET
+
+tp -> ua: (HTTPS 302)
+
+& ua -> uac : Redirection to GET https://rp/login (initiate_login_uri)\n  ?iss=https://op\n  &login_hint=janedoe@example.com (OPTIONAL)\n  &target_link_uri=https://rp/page4 (OPTIONAL)
+& uac->client
+
+else Using HTML form and urlencoded POST
+
+tp -> ua : (HTTPS with HTML Form)
+
+& ua->uac: Redirection to POST https://rp/login urlencoded\niss=https://op\n  &login_hint=janedoe@example.com (OPTIONAL)\n  &target_link_uri=https://rp/page4 (OPTIONAL)
+
+& uac->client
+
+end
+
+hnote over client: ⚠️ Validate target_link_uri\n(protect against open redirect)
+hnote over client: Associate target_link_uri with state
+
+ref over client, user: Some OpenID Connect flow
+
+client -> uac: Restore application state (eg. target_link_uri)
+& uac -> user  
+
+@enduml
+

@@ -1,0 +1,76 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+box    
+    actor "Resource Owner\n(User)" as user
+    participant "Device (client)" as device
+    participant "User Agent / Frontend for\nAuthorization Server" as uaas
+end box
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+note over as, uaas:Relevant AS Metadata:\n"device_authorization_endpoint": "https://as/device_auth"
+
+
+user -> device: Request to authorize resource access
+
+device -> as: **Device Authorization Request**\nHTTPS POST https://as/device_auth (device_authorization_endpoint)\n(authentication, for confidential client)\nclient_id=CID-XXXX (for non-confidential client)\n&scope=scope1+scope2\n&…
+
+as --> device: **Device Authorization Response**\nHTTPS 200, JSON\n"device_code": "DC-XXXX", (REQUIRED, unique authorization request ID, limited duration)\n"user_code": "XOXO-9183", (REQUIRED, user confirmation code)\n"verification_uri": "https://as/device", (REQUIRED)\n"verification_uri_complete": https://as/device?user_code=XOXO-9183", (OPTIONAL)\n"expires_in": 600, (REQUIRED)\n"interval": 5 (OPTIONAL, default is 5)
+
+par
+
+device -> user
+hnote right: "Visit https://as/device and enter code XOXO-9183" 
+opt
+    device -> user
+    rnote right: Display link (eg. QR code, NFC, etc.) for\nhttps://as/device?user_code=XOXO-9183
+end
+
+alt Non textual Verification
+    hnote over user: Scan QR code
+    user -> uaas: Browse to https://as/device?user_code=XOXO-9183
+    & uaas -> as
+else Textual Verification
+    user -> uaas: Browse to https://as/device
+    & uaas -> as
+    user<->uaas
+    & uaas<->as
+    note right: Ask user for user_code
+end
+
+...
+
+opt User does not already have a session
+    user<->uaas
+    & uaas<->as: Authentication
+end
+
+user<->uaas
+& uaas<->as: Consent
+rnote right: "Do you want to authorize\nClientFoo to …?"
+
+else
+
+loop Authentication not pending (polling)
+
+device->as: **Device Access Token Request**\nHTTPS POST https://as/token, urlencoded\ngrant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code\n&device_code=DC-XXXX\n&client_id=CID-XXXX (if no client authentication method used)\n&…
+
+alt Authentication pending
+
+as-->device: **Device Access Token Response**\nHTTPS 400, JSON\n"error": "authorization_pending" (or "slow_down")
+
+else Authentication completed
+
+as-->device: **Device Access Token Response**\nHTTPS 200, JSON\naccess_token":"AT-XXXX", (opaque)\n"token_type":"bearer",\n"expires_in":3600,\n"refresh_token":"RT-XXXX", (OPTIONAL, opaque)\n"scope":"scope1 scope2"
+
+end
+
+end
+
+end
+
+@enduml
+

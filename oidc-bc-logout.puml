@@ -1,0 +1,30 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as client
+box
+    participant "User Agent / Frontend\nfor Relying Party" as uac
+    actor "User\n(OAuth Resource Owner)" as user
+    participant "User Agent / Frontend for\nOpenID Provider" as uaas
+end box
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as as
+
+note over as, uaas:Relevant OP Metadata\n"backchannel_logout_supported": true,\n"backchannel_logout_session_supported": true,
+
+& note over uac, client:Relevant RP Registration\n"backchannel_logout_uri": "https://client/backchannel_logout",\n"backchannel_logout_session_required": true,
+
+group par loop [for all relying parties]
+
+as -> client: **Back-Channel Logout Request**\nHTTPS POST https://client/backchannel_logout, urlencoded\nlogout_token=eyJ… (JWT)
+
+hnote over client: Logout token validation\nInvalidate session(s)
+&note over uaas, as: Logout Token is a JWT of "typ":"logout+jwt" with claims:\n"iss": "https://op",\n"sub": "SUB-XXXX"\n"aud": "CID-XXXX",\n"iat": …\n"jti": …\n"events": {"http://schemas.openid.net/event/backchannel-logout": {}}\n"sid": "SID-XXXX"
+
+client --> as: HTTPS 200
+
+end
+
+@enduml
+

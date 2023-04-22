@@ -1,0 +1,25 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as rp
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as op
+
+rp -> op: **Authentication Request** (OAuth Authorization Request)\nFront channel GET https://rp/auth (authorization_endpoint)\n  ?response_type=code (REQUIRED)\n  &client_id=CID-XXXX (REQUIRED, opaque)\n  &redirect_uri=https%3A%2F%2Fclient%2Ecallback (always REQUIRED in OpenID Connect)\n  &state=AS-XXXX (RECOMMENDED, opaque)\n  &nonce=AN-XXXX (OPTIONAL using this flow but REQUIRED for other flows,\n    included in ID token, protect against replay attacks)\n  &scope=openid+profile+email+phone (OPTIONAL)\n  \n  &code_challenge_method=S256 (if PKCE used)\n  &code_challenge=CCCCCC (if PKCE used)\n  \n  &response_mode=query (or fragment, form_post, etc.)\n  &display=page / popup / touch / wap (OPTIONAL)\n  &prompt=login (OPTIONAL, and/or none/consent/select_account)\n  &max_age=320 (OPTIONAL, max. authentication age)\n  &id_token_hint=eyJ… (OPTIONAL, previous ID token)\n  &login_hint=janedoe@example.com (OPTIONAL)\n  &acr_values=… (OPTIONAL)
+
+hnote over op: User authentication and consent\n    "Do you want to login on ClientFoo? Information requested: …"
+
+op --> rp: **Authentication Response** (OAuth Authorization Response)\nFront channel GET https://rp/callback (redirect_uri)\n  ?code=AC-XXXX (opaque, single-use)\n  &state=AS-XXXX (if given)\n  &iss=https://op (extension)
+
+|||
+
+rp -> op: **Token Request** (OAuth Access Token Request)\nHTTPS POST https://op/token (token_endpoint), urlencoded\nAuthorization: Basic … (client_id + client_secret) (or other authentication method, see token_endpoint_auth_method)\ngrant_type=authorization_code\n  &code=AC-XXXX\n  &redirect_uri=https%3A%2F%2Fclient%2Fcallback (REQUIRED, same as in request)\n  &code_verifier=CV-XXXXV (if and only if code_challenge was used i.e. PKCE)
+
+op --> rp: **Token Response** (OAuth Access Token Response)\nHTTPS 200, JSON\n"access_token":"AT-XXXX", (opaque)\n"token_type":"bearer",\n"expires_in":3600,\n"refresh_token":"RT-XXXX", (OPTIONAL, opaque)\n"scope":"scope1 scope2",\n"id_token": JWT with claims,\n    "iss": "https://op",\n    "sub": "SUB-XXXX", (private for the client_id if subject_type=pairwise)\n    "aud": "CID-XXXX",\n    "exp": …, "iat": … "auth_time": …,\n    "nonce": "AN-XXXX", (from request, protection against replay attacks)\n    "acr": "…", (OPTIONAL, authentication context class),\n    "amr": ["…"], (OPTIONAL, list of user authentication methods use),\n    "azp": "CID-XXXX",n    "sid": "SID-XXX", (OPTIONAL, different for different RPs, for Front/Back-Channel Logout)\n
+hnote over rp: Optionaly decrypt (JWE) and check id_token
+hnote over rp: Create user session, etc.
+hnote over rp: Restore application state
+
+@enduml
+

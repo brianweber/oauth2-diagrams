@@ -1,0 +1,32 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as client
+box
+    participant "User Agent / Frontend\nfor Relying Party" as uac
+    actor "User\n(OAuth Resource Owner)" as user
+    participant "User Agent / Frontend for\nOpenID Provider" as uaas
+end box
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as as
+
+note over as, uaas:Relevant OP Metadata\n"frontchannel_logout_supported": true,\n"frontchannel_logout_session_supported": true
+
+& note over uac, client:Relevant RP Registration\n"frontchannel_logout_uri": "https://client/frontchannel_logout"\n"frontchannel_logout_session_required": true,
+
+user -> uaas: Logout
+& uaas -> as
+
+group par loop [for all relying parties with session]
+
+as -> uaas: (HTTPS with HTML iframe)
+& uaas -> uac: Embed as iframe http://client/frontchannel_logout (frontchannel_logout_uri)\n  ?iss=https://op (OPTIONAL, REQUIRED if frontchannel_logout_session_required)\n  &sid=SID-XXXX (OPTIONAL, REQUIRED if frontchannel_logout_session_required)
+& uac -> client
+
+client <-> uac: Logout
+
+end
+
+@enduml
+

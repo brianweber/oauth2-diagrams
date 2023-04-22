@@ -1,0 +1,18 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+
+note over client: Discovery for issuer "https://as"
+
+client -> as ++ : **Authorization Server Metadata Request**\nHTTPS GET https://as/.well-known/oauth-authorization-server
+
+as --> client -- : **Authorization Server Metadata Response**\nHTTPS 200 OK, JSON\n"issuer": "https://as",\n"response_types_supported": ["code"],\n"authorization_endpoint": "https://as/auth",\n"token_endpoint": "https://as/token",\n"token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", …],\n"token_endpoint_auth_signing_alg_values_supported": ["RS256", "ES256"],\n"grant_types_supported": ["authorization_code", "urn:ietf:params:oauth:grant-type:device_code"],\n"code_challenge_methods_supported": ["S256"], (if PKCE supported)\n…
+
+hnote over client: Check issuer match with expected one
+
+@enduml
+

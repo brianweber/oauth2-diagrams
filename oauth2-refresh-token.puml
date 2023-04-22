@@ -1,0 +1,17 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+client -> as ++ : **Refresh Token Request**\nHTTPS POST https://as/token (token_endpoint), urlencoded\n(client authentication, cf. token_endpoint_auth_methods_supported)\ngrant_type=refresh_token (REQUIRED)\n&refresh_token=RT-XXXX (REQUIRED)\n&scope=foo (OPTIONAL)
+
+hnote over as: Check refresh_token valid\nand issued to this client
+
+client <--as -- : **Refresh Token Response**\nHTTPS 200, JSON\naccess_token":"AT-YYYY",\n"token_type":"bearer",\n"expires_in":3600, (RECOMMENDED, lifetime of the access_token)\n"refresh_token":"RT-YYYY", (OPTIONAL, replaces the previous one if included)\n"scope":"foo", (REQUIRED if different from the requested scope, OPTIONAL otherwise)\n"id_token": "eyJ…" (when using OpenID Connect, OPTIONAL)
+
+@enduml
+

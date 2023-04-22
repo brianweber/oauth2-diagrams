@@ -1,0 +1,90 @@
+@startuml oidchybrid
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!if %variable_exists("$THEME")
+title OpenID Connect hybrid flow [$THEME theme]
+!else
+title OpenID Connect hybrid flow
+!endif
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as client
+box
+    participant "User Agent / Frontend\nfor Relying Party" as uac
+    actor "User\n(OAuth Resource Owner)" as user
+    participant "User Agent / Frontend for\nOpenID Provider" as uaas
+end box
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as as
+
+
+user -> uac: Request to login
+& uac -> client
+
+|||
+
+opt PKCE used
+
+hnote over client: Generate random code_verifier\nand derive code_challenge=\n  code_challenge_method(code_verifier)
+
+end
+
+client -> uac : (HTTPS 302)
+& uac -> uaas: **Authentication Request** (OAuth Authorization Request)\nRedirection to GET https://rp/auth (authorization_endpoint)\n  ?response_type= code id_token / code token / code id_token token (REQUIRED)\n  &client_id=CID-XXXX (REQUIRED, opaque)\n  &redirect_uri=https%3A%2F%2Fclient%2Ecallback (always REQUIRED in OpenID Connect)\n  &scope=openid+profile+email+phone (OPTIONAL)\n  &state=AS-XXXX (RECOMMENDED, opaque)\n  &nonce=AN-XXXX (REQUIRED, protect against replay attacks)\n  \n  &code_challenge_method=S256 (if PKCE used)\n  &code_challenge=CCCCCC (if PKCE used)\n  \n  …
+& uaas -> as: HTTPS GET https://rp/…
+
+hnote over as: Check redirect_uri allowed for client_id
+
+ref over user, as: User authentication and consent
+
+alt response_mode=query
+
+as --> uaas: (HTTPS 302)
+& uaas --> uac: **Authentication Response** (OAuth Authorization Response)\nRedirection to GET https://rp/callback (redirect_uri)\n  ?code=AC-XXXX (REQUIRED)\n  &access_token=AT-XXXX (if token in response_type)\n  &token_type=bearer (if token in response_type)\n  &id_token=eyJ… JWT with claims (if id_token in response_type)\n    … \n    "nonce": "AN-XXXX", (REQUIRED in this flow)\n    "at_hash": "…" (included when token in response_type, half of the hash of the access_token)\n    "c_hash": "…" (REQUIRED when both code and id_token included in response_type, half of the hash of the code)\n  &scope=scope1 scope2 (OPTIONAL)\n  &state=AS-XXXX (if given)\n  &expires_in=3600 (OPTIONAL)\n  &iss=https://op (extension)
+& uac --> client
+
+else 
+
+ref over client, as: other reponse modes
+
+end
+
+hnote over client: Check validity of state\nand its association with the user session\n(protection against CSRF)
+hnote over client: Check "iss" field (if given),\nprotection against mixup attacks
+
+opt id_token in reponse_type
+
+ref over client, uac: Process id_token (decrypt if necessary, validate)
+
+hnote over client, uac: Check code against c_hash (protect against code substitution attacks)
+
+opt token in response_type
+hnote over client, uac: Check code against at_hash (protect against access_token substitution attacks)
+end
+
+end
+
+|||
+
+client -> as: **Token Request** (OAuth Access Token Request)\nHTTPS POST https://op/token (token_endpoint), urlencoded\nAuthorization: Basic … (client_id + client_secret) (or other authentication method, see token_endpoint_auth_method)\ngrant_type=authorization_code\n  &code=AC-XXXX\n  &redirect_uri=https%3A%2F%2Fclient%2Fcallback (REQUIRED, same as in request)\n  &code_verifier=CV-XXXXV (if code_challenge was used i.e. PKCE)
+
+hnote over as: Check (client authentication,\nredirect_uri, code, etc)
+hnote over as: Check code issued to client_id
+opt code_challenge was sent in authentication request
+  hnote over as: Check code_verifier=\ncode_challenge_method(code_challenge)
+else
+  break code_verifier was supplied
+    note over as: Protection against PKCE downgrade attacks
+  end
+end
+hnote over as: Revoke code (single use)
+
+client <--as: **Token Response** (OAuth Access Token Response)\nHTTPS 200, JSON\n"access_token":"AT-XXXX", (opaque)\n    (may have different security characteristics than the access_token returned in the authentication request eg. give access to more user information)\n"token_type":"bearer",\n"expires_in":3600\n"refresh_token":"RT-XXXX", (OPTIONAL, opaque)\n"scope":"scope1 scope2",\n"id_token": JWT (may contain more information than the id_token returned in the authentication response)
+
+ref over client: Process id_token (decrypt if necessary, validate)
+
+client -> uac: Restore application state (eg. target_link_uri)
+& uac -> user
+
+@enduml
+

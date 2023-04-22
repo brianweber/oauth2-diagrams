@@ -1,0 +1,113 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+box
+    participant "User Agent / Frontend\nfor Client" as uac
+    actor "Resource Owner\n(User)" as user
+    participant "User Agent / Frontend for\nAuthorization Server" as uaas
+end box
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+note over as: Relevant AS Metadata:\n"dpop_signing_alg_values_supported": ["ES256"]
+
+&note over client: Relevant Client Metadata:\n"dpop_bound_access_tokens": true
+
+== Authorization Code Binding to DPoP Key (optional) ==
+
+alt with front-channel authorization request
+
+client -> uac : (HTTPS 302)
+& uac -> uaas: **Authorization Request**\nRedirection to GET https://as/auth?…\n  &dpop_jkt=… (SHA-256 JWK Thumbprint of the public key)
+& uaas -> as
+
+as -> uaas : (HTTPS 302)
+
+&uaas -> uac: **Authorization Response**\nRedirection to GET https://client/callback?…
+
+& uac -> client
+
+else with Push Authorization Request
+
+alt
+
+client -> as: **Pushed Authorization Request**\nHTTPS POST https://as/par, urlencoded\n(client authentication, cf. token_endpoint_auth_method)\n…\n&dpop_jtk=… (SHA-256 JWK Thumbprint of the public key)
+
+else
+
+client -> as: **Pushed Authorization Request**\nHTTPS POST https://as/par, urlencoded\n(client authentication, cf. token_endpoint_auth_method)\nDPoP: eyJ…, (a proof of posession "dpop+jwt" token, see below)\n…
+
+hnote over as: Validate dpop+jwt token.
+
+end
+
+as -> client: **Pushed Authorization Response**\nHTTPS 200, JSON
+
+client -> uac : (HTTPS 302)
+& uac -> uaas: **Authorization Request**\nRedirection to GET https://as/auth?request_uri=…
+
+& uaas -> as
+
+as -> uaas : (HTTPS 302)
+& uaas -> uac: **Authorization Response**\nRedirection to GET https://client/callback?…
+
+& uac -> client
+
+end
+
+hnote over as: Returned authorization code is bound\nto the requested public key
+
+== DPoP Access Token Request ==
+
+client -> as : **DPoP Access Token Request**\nHTTPS POST https://as/token (token_endpoint), urlencoded\nAuthorization: Basic … (client_id + client_secret) (or other authentication method, see token_endpoint_auth_method)\nDPoP: eyJ…, (a proof of posession "dpop+jwt" JWT)\n\nclient_id=CID-XXXX\n&grant_type=authorization_code\n&code=AC-XXXX\n&redirect_uri=https%3A%2F%2Fclient%2Fcallback\n&code_verifier=CV-XXXXV (if and only if code_challenge was used i.e. PKCE)
+
+note right: The DPoP header contains a proof of possession of the client private key\nin the form of a ("dpop+jwt") JWT.\n**Headers:**\n* "typ": "dpop+jwt" (token type)\n* "alg": "ES256" (signature algorithm)\n* "jwk": {…} (public key)\n**Claims:**\n* "jti": "…" (unique ID)\n* "iat": … (timestamp)\n* "htm": "POST" (HTTP method)\n* "htu": "https://as/token" (target URI without query and fragment)
+
+hnote over as: Validate dpop+jwt token.
+
+opt AS uses nonces and no expected nonce was supplied in the dpop+jwt
+
+note over as: AS is expected to keep a window\nof recent (acceptable) nonces.
+
+client <--as : **Access Token Response**\nHTTPS 400, JSON\nDPoP-Nonce: DN-XXXX\n"error": "use_dpop_nonce"
+
+client -> as : **DPoP Access Token Request**\nHTTPS POST https://as/token (token_endpoint), urlencoded\nAuthorization: Basic … (client_id + client_secret) (or other authentication method, see token_endpoint_auth_method)\nDPOP: eyJ…, (a Proof of Posession "dpop+jwt" JWT with additional claim "nonce: "DN-XXXX" claim)\nclient_id=CID-XXXX&…
+
+end
+
+opt Authorization Code Binding to DPoP Key as used
+hnote over as: Check the public key is the proof of possession\nmatches with the one specified in the authorization request.
+end
+
+client <--as : **Access Token Response**\nHTTPS 200, JSON\nDPoP-Nonce: DN-YYYY (OPTIONAL, used to supply a new nonce)\n\n"access_token":"AT-XXXX", (opaque)\n"token_type":"DPoP",\n"expires_in":3600,\n"refresh_token":"RT-XXXX", (OPTIONAL, opaque)\n"scope":"scope1 scope2",\n"authorization_details": [{"type": "…", …}, …] (extension, see draft-ietf-oauth-rar)\n
+note right: access_token is bound to the client public key.\nWhen it is a JWT, the "cnf" claim can be used:\n    "cnf": {"jkt": "…"} (SHA-256 JWK Thumbprint of the public key)\n\nrefresh_token (if ANY) SHOULD be bound\nto the client key pair as well\nwhen the client is a public client.
+
+== Protected Resource Access ==
+
+client -> rs: **Protected Resource Request**\nHTTPS GET/POST/… https://rs/api/protected_resource\nAuthorization: DPoP AT-XXXX (access token)\nDPoP: eyJ…, a "dpop+jwt" token with additional claim,\n  "ath": "…", SHA-256 hash of the access_token
+
+hnote over rs: Validate access_token
+hnote over rs: Validate dpop+jwt token
+hnote over rs: Check the public key in the dpop+jwt matches\nwith the one associated with the access_token
+
+opt RS uses nonces and no expected was not supplied in the dpop+jwt
+
+client <--rs : **Protected Resource Response**\nHTTPS 401N\nWWW-Authenticate: DPoP error="use_dpop_nonce, …\nDPoP-Nonce: DN-XXXX
+
+client -> rs: **Protected Resource Request**\nHTTPS GET/POST/… https://rs/api/protected_resource\nAuthorization: DPoP AT-XXXX (access token)\nDPoP: eyJ…, a "dpop+jwt" with the same claims as above and\n  "ath": "…", SHA-256 hash of the access_token\n  "nonce": "DN-XXXX",
+
+end
+
+rs -> client: **Protected Resource Response**
+
+== Token Introspection ==
+
+rs -> as : **Introspection Request**\nHTTPS POST https://as/introspect (introspection_endpoint), urlencoded
+
+as --> rs: **Introspection Response**\nHTTPS 200, JSON\n…\n"cnf": {"jkt": "…"}, (SHA-256 JWK Thumbprint of the public key)
+
+@enduml
+

@@ -1,0 +1,43 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+box
+    participant "User Agent / Frontend\nfor Client" as uac
+    actor "Resource Owner\n(User)" as user
+    participant "User Agent / Frontend for\nAuthorization Server" as uaas
+end box
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+note over as, uaas:Relevant AS Metadata:\n"pushed_authorization_request_endpoint": "http://as/par",\n"require_pushed_authorization_requests": false,
+
+& note over client, uac:Relevant Client Metadata:\n"require_pushed_authorization_requests": false,
+
+user -> uac: Request to authorize resource access
+& uac -> client
+
+opt PKCE used
+  hnote over client: Generate code_verifier, code_challenge
+end
+
+client -> as: **Pushed Authorization Request**\nHTTPS POST https://as/par (pushed_authorization_request_endpoint), urlencoded\n(client authentication, cf. token_endpoint_auth_method)\n  response_type=code\n  &client_id=CID-XXXX\n  &redirect_uri=https%3A%2F%2Fclient%2Ecallback\n  &state=AS-XXXX\n  \n  &scope=scope1+scope2\n  &code_challenge_method=S256 (if PKCE used)\n  &code_challenge=CCCCCC (if PKCE used)\n  &…
+
+as --> client: **Pushed Authorization Request**\nHTTPS 200, JSON\n{"request_uri":"urn:ietf:params:oauth:request_uri:XXXXX", (single-user reference),\n"expires_in": 60}
+
+client -> uac : (HTTPS 302)
+& uac -> uaas: **Authorization Request**\nRedirection to GET https://as/auth (authorization_endpoint)\n  ?client_id=CID-XXXX\n  &request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3AXXXXX  
+& uaas -> as
+
+hnote over as: Resolve request reference and invalidate it
+
+as -> uaas: (HTTPS 302)
+& uaas -> uac: **Authorization Request**\nRedirection to https://client/callback?…
+& uac -> client
+
+... end of the flow ...
+
+@enduml
+

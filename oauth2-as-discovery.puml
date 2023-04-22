@@ -1,0 +1,19 @@
+@startuml dg
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+title "Authorization server discovery (draft)"   
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+client -> rs ++: **Resource Request**\nHTTPS GET/POST https://rs/…
+
+rs --> client --: HTTPS 400, WWW-Authenticate: Bearer\n    error="invalid_request",\n    error_description="…",\n    issuer="https://as"
+
+ref over client, as: Some Oauth Authorization Flow
+
+@enduml
+

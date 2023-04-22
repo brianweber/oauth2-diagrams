@@ -1,0 +1,38 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+
+== Dynamic Client registration ==
+
+note over as:Relevant AS Metadata:\n"registration_endpoint": "https://as/register",
+
+client -> as ++ : **Client Registration Request**\nHTTPS POST https://as/register (registration_endpoint), JSON\n(optionally, authentication using some credential)\n"redirect_uris": ["https://client/callback"],\n"response_types": ["code"]\n"client_name": "Foo",\n"client_uri": "https://client",\n"token_endpoint_auth_method": "client_secret_basic",\n"logo_uri": "https://client/logo.png",\n"software_statement": "eyJ…", (OPTIONAL, metadata in JWT-form signed by software vendor)\n…
+
+as --> client -- : **Client Registration Response**\nHTTPS 200, JSON\n"client_id": "CID-XXXX",\n"client_secret": "SECRET-XXXX" (opaque, depending on client auth. method)\n"client_secret_expires_at": 0,\n"registration_client_uri": "htpps://as/registration/RRRRR" (if dynamic management supported),\n"registration_access_token", "RAT-XXXX" (opaque, if dynamic management supported)\n…
+
+...
+
+== Dynamic Client Registration Management ==
+
+client -> as ++ : **Client Read Request**\nHTTPS GET https://as/registration/RRRRR\nAuthorization: Bearer RAT-XXXX
+
+as --> client -- : **Client Information Response**\nHTTPS 200, JSON
+
+...
+
+client -> as ++ : **Client Update Request**\nHTTPS PUT https://as/registration/RRRRR, JSON\nAuthorization: Bearer RAT-XXXX\n"redirect_uris": ["https://client/callback", …],\n"client_name": "Client",\n"token_endpoint_auth_method": "client_secret_basic",\n"logo_uri": "https://client/logo.png"\n…
+
+as --> client -- : **Client Information Response**\nHTTPS 200, JSON
+
+...
+
+client -> as ++ : **Client Delete Request**\nHTTPS DELETE https://as/registration/RRRRR\nAuthorization: Bearer RAT-XXXX
+
+as --> client -- : **Client Delete Confirmation**\nHTTPS 204
+
+@enduml
+

@@ -1,0 +1,64 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as client
+box
+    participant "User Agent / Frontend\nfor Relying Party" as uac
+    actor "User\n(OAuth Resource Owner)" as user  
+    participant "iframe of\nOpenID Provider" as iframe
+    participant "User Agent / Frontend for\nOpenID Provider" as uaas
+end box
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as as
+
+note over uaas, as:Relevant RP Registration\n"check_session_iframe": "https://op/check_session_iframe"
+
+as -> uaas : (HTTPS 302)
+& uaas -> uac: **Authentication Response** (OAuth Authorization Response)\nRedirection to GET https://rp/callback (redirect_uri)\n  ?code=AC-XXXX (opaque, single-use)\n  &state=AS-XXXX (if given)\n  &iss=https://op (extension)\n  &session_state=SS-XXXX
+
+note over uaas, as: session_state is some salted hash of the client_id,\norigin URI of the client and the session state\n(i.e. which used are logged in) on the AS.
+
+uac -> iframe: Include a <iframe src=https://op/check_session_iframe>
+iframe <-> as: Initialization of the iframe
+
+par
+
+loop
+
+uac -> iframe: postMessage("CID-XXXX SS-XXXX", "https://op")
+hnote over iframe: Recompute session_state and\ncompare it with the provided one\n(SS-XXXX)
+
+alt session_state is unchanged
+
+iframe --> uac: postMessage("unchanged", "https://client")
+&uac -> client
+
+else session_state has changed
+
+iframe --> uac: postMessage("changed", "https://client")
+&uac -> client
+
+client -> uac
+& uac -> uaas:  **Authentication Request** (OAuth Authorization Request)\n…&prompt=none
+
+ref over client, as: End of the OpenID Connect flow
+
+end
+
+end
+
+else
+
+loop
+
+as -> iframe: Session state changed
+
+hnote over iframe: Update session state
+
+end
+
+end
+
+@enduml
+

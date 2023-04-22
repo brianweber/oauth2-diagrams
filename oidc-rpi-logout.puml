@@ -1,0 +1,59 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Relying Party\n(OAuth Client)\nhttps://rp" as client
+box
+    participant "User Agent / Frontend\nfor Relying Party" as uac
+    actor "User\n(OAuth Resource Owner)" as user
+    participant "User Agent / Frontend for\nOpenID Provider" as uaas
+end box
+participant "OpenID Provider\n(OAuth Authorization Server)\nhttps://op" as as
+
+note over as, uaas:Relevant OP Metadata\n"end_session_endpoint": "https://op/end_session",
+
+& note over uac, client:Relevant RP Registration\n"post_logout_redirect_uris": ["https://client/post_logout"],
+
+alt
+
+user -> uac: Logout
+& uac -> client
+
+client -> uac: (HTTPS 302)
+
+& uac -> uaas: **RP-Initiated Logout**\nHTTPS GET https://as/logout? (end_session_endpoint) \nid_token_hint=eyJ… (OPTIONAL, id_token)\n&logout_hint=… (OPTIONAL, login, e-mail, etc.)\n&client_id=CID-XXXX (OPTIONAL)\n&post_logout_redirect_uri=https://client/post_logout\n  (OPTIONAL, must be registered in post_logout_redirect_uris)\n&state=LOS-XXXX (OPTIONAL) \n&ui_locales=fr-Fr+en-US
+
+& uaas -> as
+
+else
+
+client -> uac: (HTTPS with HTML form)
+
+& uac -> uaas: **RP-Initiated Logout**\nRedirection to POST https://as/logout (end_session_endpoint), urlencoded \nid_token_hint=eyJ… (OPTIONAL, id_token)\n&logout_hint=… (OPTIONAL, login, e-mail, etc.)\n&client_id=CID-XXXX (OPTIONAL)\n&post_logout_redirect_uri=https://client/post_logout\n  (OPTIONAL, must be registered in post_logout_redirect_uris)\n&state=LOS-XXXX (OPTIONAL)\n&ui_locales=fr-Fr+en-US
+
+& uaas -> as
+
+end
+
+user <-> uaas : Consent
+& uaas <-> as
+
+hnote over as: Remove session
+
+group par loop [for all relying parties]
+as -> client : Notify logout (all)\nEither Front-Channel Logout, Back-Channel Logout, etc.
+end
+
+opt post_logout_redirect_uri supplied
+
+as -> uaas: (HTTPS 302)
+&uaas -> uac: Redirection to GET https://client/post_logout (post_logout_redirect_uri)\n  ?state=LOS-XXXX (if provided by the RP)
+&uac -> client
+
+hnote over client: Check state (protection against CSRF)
+
+end
+
+@enduml
+

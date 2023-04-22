@@ -1,0 +1,54 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+box
+    participant "User Agent / Frontend\nfor Client" as uac
+    actor "Resource Owner\n(User)" as user
+    participant "User Agent / Frontend for\nAuthorization Server" as uaas
+end box
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+note over client: Authorization Server configuration\n(endpoints, etc.)\nand client credentials\n(client_id, client_secret, etc.)\nalready provisionned
+
+& note over as: Client configuration\nalready provisionned\n(redirect_uris, etc.)
+
+user -> uac: Request to authorize resource access
+& uac -> client
+
+|||
+
+client -> uac : (HTTPS 302)
+& uac -> uaas: **Authorization Request**\nRedirection to GET https://as/auth (authorization_endpoint)\n  ?response_type=token (REQUIRED)\n  &client_id=CID-XXXX (REQUIRED, opaque)\n  &redirect_uri=https%3A%2F%2Fclient%2Ecallback (REQUIRED unless exactly one URI registered for this client)\n  &state=AS-XXXX (RECOMMENDED, opaque)\n  \n  &scope=scope1+scope2 (OPTIONAL)\n  &resource=http://rs/api (extension, API base URI)\n  &authorization_details=[{"type": "…", …}, …] (extension, see draft-ietf-oauth-rar)\n\  
+note right: POST (urlencoded) may be supported as well.
+note left: For native apps, the redirect_uri may be\na claimed https:// URI,\na com.example.foo: (private) URI,\nor a http://localhost:XXX URI
+& uaas -> as
+
+
+hnote over as: Check redirect_uri allowed for client_id
+
+opt User does not already have a session
+  user <-> uaas : User authentication
+  & uaas <-> as
+  & note left of user: Authorization Server\nmay use any authentication methods\n(mTLS, WebAuthn, etc.)\nfor authenticating the user
+end
+
+user <-> uaas : Consent
+rnote left: "Do you want to authorize\nClientFoo to …?"
+& uaas <-> as
+
+as --> uaas: (HTTPS 302)
+& uaas --> uac: **Authorization Response**\nRedirection to GET https://client/callback (redirect_uri)\n  ?access_token=AT-XXXX (⚠️ NO refresh_token!)\n  &token_type=bearer" (or "mac", etc.)\n  &expires_in":3600\n  &scope=scope1+scope2\n  &state=AS-XXXX (if given)\n  &iss=https://as (extension)
+& uac --> client
+
+hnote over client: Check validity of state\nand its association with the user session\n(protection against CSRF)
+hnote over client: Check "iss" field (if given),\nprotection against mixup attacks
+
+client -> uac: Restore application state
+& uac -> user
+
+@enduml
+

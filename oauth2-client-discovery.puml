@@ -1,0 +1,25 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+opt Initiated by Authorization Request
+
+client -> as: **Authorization Request Using Client Discovery**\n…\n&client_id=https://client\n&client_discovery=true
+
+end
+
+hnote over as: Start discovery for https://client
+
+as -> client ++: **Client Metadata Request**\nHTTPS GET https://client/.well-known/oauth-client
+
+client --> as --: **Client Metadata Response**\nHTTPS 200, JSON\n"client_uri": "https://client",\n"client_name": "ClientFoo",\n"redirect_uris": ["https://client/callback"],\n"logo_uri": "https://client/logo.png",\n"jwks_uri": "https://client/public.jwks",
+
+hnote over as: Check client_uri = "https://client"
+
+@enduml
+

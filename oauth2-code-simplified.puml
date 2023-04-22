@@ -1,0 +1,23 @@
+@startuml
+!theme cloudscape from /Users/brianweber/Downloads/oauth2-diagrams/themes
+
+!pragma teoz true
+
+participant "Client\nhttps://client" as client
+participant "Authorization Server\nhttps://as" as as
+participant "Resource Server\nhttps://rs" as rs
+
+hnote over client: User starts authorization process
+
+client -> as ++ : **Authorization Request**\nFront channel GET https://as/auth (authorization_endpoint)\n  ?response_type=code (REQUIRED)\n  &client_id=CID-XXXX (REQUIRED, opaque)\n  &redirect_uri=https%3A%2F%2Fclient%2Ecallback (REQUIRED unless exactly one URI registered for this client)\n  &state=AS-XXXX (RECOMMENDED, opaque)\n  \n  &scope=scope1+scope2 (OPTIONAL)\n  &resource=http://rs/api (extension, API base URI)\n  &authorization_details=[{"type": "…", …}, …] (extension, see draft-ietf-oauth-rar)\n  \n  &code_challenge_method=S256 (if PKCE used)\n  &code_challenge=CCCCCC (if PKCE used)
+
+hnote over as: User authentication and consent
+
+as --> client -- : **Authorization Response**\nFront channel GET https://client/callback (redirect_uri)\n  ?code=AC-XXXX (opaque, single-use)\n  &state=AS-XXXX (if given)\n  &iss=https://as (extension)
+
+client -> as ++ : **Access Token Request**\nHTTPS POST https://as/token (token_endpoint), urlencoded\nAuthorization: Basic … (client_id + client_secret) (or other authentication method, see token_endpoint_auth_method)\ngrant_type=authorization_code\n  &code=AC-XXXX\n  &redirect_uri=https%3A%2F%2Fclient%2Fcallback (if given in request)\n  &code_verifier=CV-XXXXV (if and only if code_challenge was used i.e. PKCE)
+
+client <--as -- : **Access Token Response**\nHTTPS 200, JSON\n"access_token":"AT-XXXX" (opaque)\n"token_type":"bearer",\n"expires_in":3600,\n"refresh_token":"RT-XXXX", (OPTIONAL, opaque)\n"scope":"scope1 scope2" (OPTIONAL)
+
+@enduml
+
